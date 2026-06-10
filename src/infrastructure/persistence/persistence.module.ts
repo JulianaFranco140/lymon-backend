@@ -36,6 +36,12 @@ import {
   IncidentReportDocument,
   IncidentReportSchema,
 } from '@/infrastructure/persistence/schemas/incident-report.schema';
+import {
+  GuestNoteDocument,
+  GuestNoteSchema,
+} from '@/infrastructure/persistence/schemas/guest-note.schema';
+import { GUEST_NOTE_REPOSITORY } from '@/domain/guest-note/repositories/guest-note.repository';
+import { MongoGuestNoteRepository } from '@/infrastructure/persistence/repositories/mongo-guest-note.repository';
 import { TENANT_REPOSITORY } from '@/domain/tenant/repositories/tenant.repository';
 import { MongoTenantRepository } from '@/infrastructure/persistence/repositories/mongo-tenant.repository';
 import { USER_REPOSITORY } from '@/domain/user/repositories/user.repository';
@@ -62,7 +68,35 @@ import {
   ReservationSchema,
 } from '@/infrastructure/persistence/schemas/reservation.schema';
 import { RESERVATION_REPOSITORY } from '@/domain/reservation/repositories/reservation.repository';
+import { GUEST_RESERVATIONS_READ_REPOSITORY } from '@/domain/reservation/repositories/guest-reservations-read.repository';
 import { MongoReservationRepository } from './repositories/mongo-reservation.repository';
+import {
+  InventoryItemDocument,
+  InventoryItemSchema,
+} from '@/infrastructure/persistence/schemas/inventory-item.schema';
+import {
+  InventoryMovementDocument,
+  InventoryMovementSchema,
+} from '@/infrastructure/persistence/schemas/inventory-movement.schema';
+import { INVENTORY_ITEM_REPOSITORY } from '@/domain/inventory/repositories/inventory-item.repository';
+import { MongoInventoryItemRepository } from '@/infrastructure/persistence/repositories/mongo-inventory-item.repository';
+import { INVENTORY_MOVEMENT_REPOSITORY } from '@/domain/inventory/repositories/inventory-movement.repository';
+import { MongoInventoryMovementRepository } from '@/infrastructure/persistence/repositories/mongo-inventory-movement.repository';
+import {
+  GuestEmailDocument,
+  GuestEmailSchema,
+} from '@/infrastructure/persistence/schemas/guest-email.schema';
+import { GUEST_EMAIL_REPOSITORY } from '@/domain/guest-email/repositories/guest-email.repository';
+import { MongoGuestEmailRepository } from '@/infrastructure/persistence/repositories/mongo-guest-email.repository';
+import {
+  ShiftDocument,
+  ShiftSchema,
+} from '@/infrastructure/persistence/schemas/shift.schema';
+import { SHIFT_REPOSITORY } from '@/domain/shift/repositories/shift.repository';
+import { MongoShiftRepository } from '@/infrastructure/persistence/repositories/mongo-shift.repository';
+import { SupplierDocument, SupplierSchema } from './schemas/supplier.schema';
+import { SUPPLIER_REPOSITORY } from '@/domain/inventory/repositories/supplier.repository';
+import { MongoSupplierRepository } from './repositories/mongo-supplier.repository';
 
 @Module({
   imports: [
@@ -77,6 +111,15 @@ import { MongoReservationRepository } from './repositories/mongo-reservation.rep
       { name: AuditLogDocument.name, schema: AuditLogSchema },
       { name: IncidentReportDocument.name, schema: IncidentReportSchema },
       { name: ReservationDocument.name, schema: ReservationSchema },
+      { name: InventoryItemDocument.name, schema: InventoryItemSchema },
+      {
+        name: InventoryMovementDocument.name,
+        schema: InventoryMovementSchema,
+      },
+      { name: SupplierDocument.name, schema: SupplierSchema },
+      { name: GuestNoteDocument.name, schema: GuestNoteSchema },
+      { name: GuestEmailDocument.name, schema: GuestEmailSchema },
+      { name: ShiftDocument.name, schema: ShiftSchema },
     ]),
   ],
   providers: [
@@ -124,6 +167,34 @@ import { MongoReservationRepository } from './repositories/mongo-reservation.rep
       provide: RESERVATION_REPOSITORY,
       useClass: MongoReservationRepository,
     },
+    {
+      provide: GUEST_RESERVATIONS_READ_REPOSITORY,
+      useExisting: RESERVATION_REPOSITORY,
+    },
+    {
+      provide: INVENTORY_ITEM_REPOSITORY,
+      useClass: MongoInventoryItemRepository,
+    },
+    {
+      provide: INVENTORY_MOVEMENT_REPOSITORY,
+      useClass: MongoInventoryMovementRepository,
+    },
+    {
+      provide: SUPPLIER_REPOSITORY,
+      useClass: MongoSupplierRepository,
+    },
+    {
+      provide: GUEST_NOTE_REPOSITORY,
+      useClass: MongoGuestNoteRepository,
+    },
+    {
+      provide: GUEST_EMAIL_REPOSITORY,
+      useClass: MongoGuestEmailRepository,
+    },
+    {
+      provide: SHIFT_REPOSITORY,
+      useClass: MongoShiftRepository,
+    },
     RoleSeedService,
   ],
   exports: [
@@ -138,6 +209,13 @@ import { MongoReservationRepository } from './repositories/mongo-reservation.rep
     TRANSACTION_MANAGER,
     INCIDENT_REPORT_REPOSITORY,
     RESERVATION_REPOSITORY,
+    GUEST_RESERVATIONS_READ_REPOSITORY,
+    INVENTORY_ITEM_REPOSITORY,
+    INVENTORY_MOVEMENT_REPOSITORY,
+    SUPPLIER_REPOSITORY,
+    GUEST_NOTE_REPOSITORY,
+    GUEST_EMAIL_REPOSITORY,
+    SHIFT_REPOSITORY,
   ],
 })
 export class PersistenceModule {}

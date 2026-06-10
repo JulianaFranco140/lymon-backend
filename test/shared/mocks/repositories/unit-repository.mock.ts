@@ -8,5 +8,7 @@ export function createUnitRepositoryMock(): jest.Mocked<UnitRepository> {
     findByTenantId: jest.fn(),
     countByTenantId: jest.fn(),
     delete: jest.fn(),
+    findByTenantIdPaginated: jest.fn(),
+    findAllPaginated: jest.fn(),
   };
 }

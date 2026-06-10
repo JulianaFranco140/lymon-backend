@@ -7,6 +7,7 @@ import { ChangePasswordHandler } from '@/application/user/commands/change-passwo
 import { AuthModule } from '@/infrastructure/auth/auth.module';
 import { LoginHandler } from '@/application/auth/commands/login.handler';
 import { RefreshTokenHandler } from '@/application/auth/commands/refresh-token.handler';
+import { LogoutHandler } from '@/application/auth/commands/logout.handler';
 import { RecoverPasswordHandler } from '@/application/auth/commands/recover-password.handler';
 import { ConfirmRecoverPasswordHandler } from './auth/commands/confirm-recover-password.handler';
 import { EmailModule } from '@/infrastructure/email/email.module';
@@ -20,17 +21,31 @@ import { GuestAuthApplicationModule } from '@/application/guest-auth/guest-auth-
 import { RoleApplicationModule } from '@/application/role/role-application.module';
 import { GuestApplicationModule } from '@/application/guest/guest-application.module';
 import { ReservationApplicationModule } from '@/application/reservation/reservation-application.module';
+import { InventoryApplicationModule } from '@/application/inventory/inventory-application.module';
+import { GuestNoteApplicationModule } from '@/application/guest-note/guest-note-application.module';
+import { GuestEmailApplicationModule } from '@/application/guest-email/guest-email-application.module';
+import { UserApplicationModule } from '@/application/user/user-application.module';
+import { CreateShiftCommandHandler } from '@/application/shift/commands/create-shift/create-shift.handler';
+import { UpdateShiftCommandHandler } from '@/application/shift/commands/update-shift/update-shift.handler';
+import { DeleteShiftCommandHandler } from '@/application/shift/commands/delete-shift/delete-shift.handler';
+import { GetShiftsHandler } from '@/application/shift/queries/get-shifts/get-shifts.handler';
 
 const CommandHandlers = [
   RegisterTenantHandler,
   LoginHandler,
   RefreshTokenHandler,
+  LogoutHandler,
   RecoverPasswordHandler,
   ConfirmRecoverPasswordHandler,
   VerifyEmailHandler,
   ChangePasswordHandler,
   InviteStaffHandler,
+  CreateShiftCommandHandler,
+  UpdateShiftCommandHandler,
+  DeleteShiftCommandHandler,
 ];
+
+const QueryHandlers = [GetShiftsHandler];
 @Module({
   imports: [
     CqrsModule,
@@ -46,8 +61,12 @@ const CommandHandlers = [
     RoleApplicationModule,
     GuestApplicationModule,
     ReservationApplicationModule,
+    InventoryApplicationModule,
+    GuestNoteApplicationModule,
+    GuestEmailApplicationModule,
+    UserApplicationModule,
   ],
-  providers: [...CommandHandlers],
-  exports: [...CommandHandlers, GuestApplicationModule],
+  providers: [...CommandHandlers, ...QueryHandlers],
+  exports: [...CommandHandlers, ...QueryHandlers, GuestApplicationModule],
 })
 export class ApplicationModule {}

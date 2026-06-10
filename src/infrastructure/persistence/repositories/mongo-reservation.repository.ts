@@ -1,12 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, ClientSession } from 'mongoose';
-import { ReservationRepository } from '@/domain/reservation/repositories/reservation.repository';
+import type {
+  GuestReservationFilters,
+  GuestReservationQueryOptions,
+  GuestReservationsReadRepository,
+} from '@/domain/reservation/repositories/guest-reservations-read.repository';
+import type { ReservationRepository } from '@/domain/reservation/repositories/reservation.repository';
 import { Reservation } from '@/domain/reservation/entities/reservation.entity';
 import { ReservationId } from '@/domain/reservation/value-objects/reservation-id.vo';
 import { DateRange } from '@/domain/reservation/value-objects/date-range.vo';
-import { ReservationSourceEnum } from '@/domain/reservation/value-objects/reservation-source.vo';
-import { ReservationSource } from '@/domain/reservation/value-objects/reservation-source.vo';
+import {
+  ReservationSource,
+  ReservationSourceEnum,
+} from '@/domain/reservation/value-objects/reservation-source.vo';
 import {
   ReservationStatus,
   ReservationStatusEnum,
@@ -16,15 +23,27 @@ import { TenantId } from '@/domain/tenant/value-objects/tenant-id.vo';
 import { PropertyId } from '@/domain/property/value-objects/property-id.vo';
 import { UnitId } from '@/domain/unit/value-objects/unit-id.vo';
 import { GuestId } from '@/domain/guest/value-objects/guest-id.vo';
+import { TransactionContextData } from '@/domain/shared/transaction-manager.interface';
+
+const ACTIVE_RESERVATION_STATUSES = [
+  ReservationStatusEnum.PENDING,
+  ReservationStatusEnum.CONFIRMED,
+  ReservationStatusEnum.CHECKED_IN,
+];
 
 @Injectable()
-export class MongoReservationRepository implements ReservationRepository {
+export class MongoReservationRepository
+  implements ReservationRepository, GuestReservationsReadRepository
+{
   constructor(
     @InjectModel(ReservationDocument.name)
     private readonly reservationModel: Model<ReservationDocument>,
   ) {}
 
-  async save(reservation: Reservation, ctx?: unknown): Promise<string> {
+  async save(
+    reservation: Reservation,
+    ctx?: TransactionContextData,
+  ): Promise<string> {
     const session = ctx as ClientSession | undefined;
     const id = reservation.getId()?.toString();
 
@@ -66,7 +85,7 @@ export class MongoReservationRepository implements ReservationRepository {
     const saved = session
       ? await newDoc.save({ session })
       : await newDoc.save();
-    return saved._id.toString();
+    return saved._id.toHexString();
   }
 
   async findById(id: ReservationId): Promise<Reservation | null> {
@@ -143,6 +162,54 @@ export class MongoReservationRepository implements ReservationRepository {
     return docs.map((d) => this.toDomain(d));
   }
 
+  async findByGuestIds(
+    guestIds: string[],
+    options: GuestReservationQueryOptions,
+  ): Promise<Reservation[]> {
+    if (guestIds.length === 0) {
+      return [];
+    }
+
+    const skip = (options.page - 1) * options.limit;
+    let sortField: 'status' | 'createdAt' | 'checkIn' = 'checkIn';
+    if (options.sortBy === 'status') {
+      sortField = 'status';
+    }
+    if (options.sortBy === 'createdAt') {
+      sortField = 'createdAt';
+    }
+    const sortDirection = options.sortOrder === 'asc' ? 1 : -1;
+
+    const guestObjectIds = guestIds.map(
+      (guestId) => new Types.ObjectId(guestId),
+    );
+    const filters = this.buildGuestFilters(guestObjectIds, options);
+
+    const docs = await this.reservationModel
+      .find(filters)
+      .sort({ [sortField]: sortDirection, createdAt: -1 })
+      .skip(skip)
+      .limit(options.limit);
+
+    return docs.map((d) => this.toDomain(d));
+  }
+
+  async countByGuestIds(
+    guestIds: string[],
+    filters?: GuestReservationFilters,
+  ): Promise<number> {
+    if (guestIds.length === 0) {
+      return 0;
+    }
+
+    const guestObjectIds = guestIds.map(
+      (guestId) => new Types.ObjectId(guestId),
+    );
+    return this.reservationModel.countDocuments(
+      this.buildGuestFilters(guestObjectIds, filters),
+    );
+  }
+
   async findByUnitAndDateRange(
     unitId: UnitId,
     dateRange: DateRange,
@@ -152,6 +219,21 @@ export class MongoReservationRepository implements ReservationRepository {
       checkIn: { $lt: dateRange.getCheckOut() },
       checkOut: { $gt: dateRange.getCheckIn() },
     });
+    return docs.map((d) => this.toDomain(d));
+  }
+
+  async findActiveByUnitFromDate(
+    unitId: UnitId,
+    fromDate: Date,
+  ): Promise<Reservation[]> {
+    const docs = await this.reservationModel.find({
+      unitId: new Types.ObjectId(unitId.toString()),
+      status: {
+        $nin: [ReservationStatusEnum.CANCELLED, ReservationStatusEnum.NO_SHOW],
+      },
+      checkOut: { $gt: fromDate },
+    });
+
     return docs.map((d) => this.toDomain(d));
   }
 
@@ -165,6 +247,32 @@ export class MongoReservationRepository implements ReservationRepository {
     });
     if (!doc) return null;
     return this.toDomain(doc);
+  }
+
+  async existsActiveByPropertyId(
+    tenantId: string,
+    propertyId: string,
+  ): Promise<boolean> {
+    const count = await this.reservationModel.countDocuments({
+      tenantId: new Types.ObjectId(tenantId),
+      propertyId: new Types.ObjectId(propertyId),
+      status: { $in: ACTIVE_RESERVATION_STATUSES },
+    });
+
+    return count > 0;
+  }
+
+  async existsActiveByUnitId(
+    tenantId: string,
+    unitId: string,
+  ): Promise<boolean> {
+    const count = await this.reservationModel.countDocuments({
+      tenantId: new Types.ObjectId(tenantId),
+      unitId: new Types.ObjectId(unitId),
+      status: { $in: ACTIVE_RESERVATION_STATUSES },
+    });
+
+    return count > 0;
   }
 
   async countByTenantId(tenantId: string): Promise<number> {
@@ -184,14 +292,43 @@ export class MongoReservationRepository implements ReservationRepository {
     return docs.map((d) => this.toDomain(d));
   }
 
+  private buildGuestFilters(
+    guestIds: Types.ObjectId[],
+    filters?: GuestReservationFilters,
+  ): Record<string, unknown> {
+    const query: Record<string, unknown> = {
+      guestId: { $in: guestIds },
+    };
+
+    if (filters?.status) {
+      query.status = filters.status;
+    }
+
+    if (filters?.fromDate || filters?.toDate) {
+      const checkInFilter: Record<string, Date> = {};
+
+      if (filters.fromDate) {
+        checkInFilter.$gte = filters.fromDate;
+      }
+
+      if (filters.toDate) {
+        checkInFilter.$lte = filters.toDate;
+      }
+
+      query.checkIn = checkInFilter;
+    }
+
+    return query;
+  }
+
   private toDomain(doc: ReservationDocument): Reservation {
     return Reservation.reconstitute(
-      doc._id.toString(),
-      TenantId.createFromString(doc.tenantId.toString()),
-      PropertyId.create(doc.propertyId.toString()),
-      UnitId.create(doc.unitId.toString()),
-      GuestId.createFromString(doc.guestId.toString()),
-      DateRange.create(doc.checkIn, doc.checkOut),
+      doc._id.toHexString(),
+      TenantId.createFromString(doc.tenantId.toHexString()),
+      PropertyId.create(doc.propertyId.toHexString()),
+      UnitId.create(doc.unitId.toHexString()),
+      GuestId.createFromString(doc.guestId.toHexString()),
+      DateRange.reconstitute(doc.checkIn, doc.checkOut),
       ReservationSource.create(doc.source as ReservationSourceEnum),
       ReservationStatus.create(doc.status as ReservationStatusEnum),
       doc.guestsCount,
